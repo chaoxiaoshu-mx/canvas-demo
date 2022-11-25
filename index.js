@@ -58,12 +58,16 @@ const getCanvasPosition = (e, offset = { x: 0, y: 0 }, scale = 1) => {
  * IDLE: 空闲状态（拖拽结束）
  * DRAG_START: 拖拽开始
  * DRAGGING: 拖拽中
- * @type {{IDLE: number, DRAG_START: number, DRAGGING: number}}
+ * MOVE_START: 开始移动画布
+ * MOVING: 画布移动中
+ * @type {{IDLE: number, MOVING: number, MOVE_START: number, DRAGGING: number, DRAG_START: number}}
  */
 const statusConfig = {
     IDLE: 0,
     DRAG_START: 1,
-    DRAGGING: 2
+    DRAGGING: 2,
+    MOVE_START: 3,
+    MOVING: 4
 }
 
 /**
@@ -90,23 +94,31 @@ const canvasInfo = {
     minScale: .5
 }
 
-
+// 禁止canvas的右键菜单
+canvas.oncontextmenu = () => false;
 /**
  * 按下鼠标时的监听事件
  */
 canvas.addEventListener("mousedown", e => {
     const pos = getCanvasPosition(e, canvasInfo.offset, canvasInfo.scale);
-    // 鼠标按下的位置是否在list中能找到，如果找到，则返回引用的对象
     let circleRef = isInCircle(pos);
-    if (circleRef) {
-        // 当在圆内按下鼠标时，拖拽对象指向list中对应的图形对象
-        canvasInfo.target = circleRef;
-        // 状态为开始拖动
-        canvasInfo.status = statusConfig.DRAG_START;
-        // 按下鼠标时的起始位置
+    if (e.button === 0) {
+        // 鼠标按下的位置是否在list中能找到，如果找到，则返回引用的对象
+        if (circleRef) {
+            // 当在圆内按下鼠标时，拖拽对象指向list中对应的图形对象
+            canvasInfo.target = circleRef;
+            // 状态为开始拖动
+            canvasInfo.status = statusConfig.DRAG_START;
+            // 按下鼠标时的起始位置
+            canvasInfo.lastEventPos = pos;
+            // 改变鼠标样式
+            canvas.style.cursor = "all-scroll";
+        }
+    } else if (e.button === 2 && !circleRef) {
+        // 鼠标右键被按下 且不在圆内
+        canvasInfo.status = statusConfig.MOVE_START;
         canvasInfo.lastEventPos = pos;
-        // 改变鼠标样式
-        canvas.style.cursor = "all-scroll";
+        canvasInfo.offsetEventPos = pos;
     }
 })
 
@@ -121,6 +133,7 @@ canvas.addEventListener("mousemove", e => {
         // 当重绘图形时计算鼠标的偏移量
         canvasInfo.offsetEventPos = pos;
     } else if (canvasInfo.status === statusConfig.DRAGGING) {
+        // 拖拽中
         const { target } = canvasInfo;
         // 因为按下鼠标时拖拽对象就已经指向list中的对象，所以在这里改变坐标时，list中对应的对象也会改变
         target.x += (pos.x - canvasInfo.offsetEventPos.x);
@@ -132,6 +145,22 @@ canvas.addEventListener("mousemove", e => {
             drawCircle(ctx, item.x, item.y, item.r);
         });
         canvasInfo.offsetEventPos = pos;
+    } else if (canvasInfo.status === statusConfig.MOVE_START && getDistance(pos, canvasInfo.lastEventPos) > 5) {
+        // 当状态为开始移动画布，且移动距离超过5， 则状态改变为移动中
+        canvasInfo.status = statusConfig.MOVING;
+        canvasInfo.offsetEventPos = pos;
+    } else if (canvasInfo.status === statusConfig.MOVING) {
+        // 移动画布中
+        canvasInfo.offset.x += pos.x - canvasInfo.offsetEventPos.x;
+        canvasInfo.offset.y += pos.y - canvasInfo.offsetEventPos.y;
+
+        ctx.setTransform(canvasInfo.scale, 0, 0, canvasInfo.scale, canvasInfo.offset.x, canvasInfo.offset.y);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        list.forEach(item => {
+            drawCircle(ctx, item.x, item.y, item.r);
+        });
+        canvasInfo.offsetEventPos = pos;
+
     }
 })
 
